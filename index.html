@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Bird with Candlesticks</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+            display: block;
+            margin: 0 auto;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+(function setup(window) {
+  var document = window.document;
+  Object.prototype.on = function(a, b) {
+    this.addEventListener(a, b);
+    return this;
+  };
+  window.can = document.querySelector("canvas");
+  window.ctx = window.can.getContext("2d");
+  window.can.width = window.innerWidth;
+  window.can.height = window.innerHeight;
+  window.randInt = function(a, b) {
+    if (a === void 0) return Math.round(Math.random());
+    else if (b === void 0) return Math.floor(Math.random() * a);
+    else return Math.floor(Math.random() * (b - a + 1) + a);
+  };
+  window.randFloat = function(a, b) {
+    if (a === void 0) return Math.random();
+    else if (b === void 0) return Math.random() * a;
+    else return Math.random() * (b - a) + a;
+  };
+  window.rand = function(a, b) {
+    return Array.isArray(a) ? a[Math.floor(Math.random() * a.length)] : window.randInt(a, b);
+  };
+}(window));
+
+(function() {
+  var bird = {
+    x: can.width / 4,
+    y: can.height / 2,
+    radius: 20,
+    velocity: 0,
+    gravity: 0.5,
+    lift: -10,
+    score: 0
+  };
+
+  var candlesticks = [];
+  var candlestickWidth = 30;
+  var candlestickInterval = 60;  // Reduced interval to make the game faster
+  var candlestickSpeed = 4;  // Increased speed of the candlesticks
+  var frameCount = 0;
+  var spacebarCooldown = 0;  // Cooldown timer for spacebar
+
+  var Building = function(x) {
+    var w = rand(200, 300);
+    return {
+      x: x !== undefined ? x : rand(-w / 2, can.width - w / 2),
+      y: rand(can.height / 4, 3 * can.height / 4),
+      w: w,
+      asleep: false,
+      sleepTimer: rand(120, 170)
+    };
+  };
+  var buildings = [];
+  for (let i = 0; i < Math.floor(can.width / 300); i++)
+    buildings.push(new Building(i * 300));
+  buildings.sort(function(a, b) {
+    return a.y - b.y;
+  });
+
+  var Cloud = function() {
+    return {
+      x: rand(can.width),
+      y: rand(0, 3 * can.height / 4),
+      s: rand(30, 50),
+      px: randFloat(0.1, 1),
+      py: rand([-1, 1]) * randFloat(0.01)
+    };
+  };
+  
+  var clouds = [];
+  for (let i = 0; i < 10; i++)
+    clouds.push(new Cloud());
+
+  var time = 1;
+  var time_dir = 1;
+  var drawCloud = function(p) {
+      ctx.beginPath();
+      ctx.lineWidth = 2;
+      ctx.fillStyle = "rgb(" + [255 - time, 255 - time, 255 - time] + ")";
+      ctx.strokeStyle = "rgb(" + [200 - time, 200 - time, 200 - time] + ")";
+      ctx.arc(p.x + p.s / 1.5, p.y + p.s, p.s / 1.5, Math.PI, 1.5 * Math.PI);
+      ctx.arc(p.x + p.s * 1.5, p.y + p.s / 3, p.s / 1.5, Math.PI, 2 * Math.PI);
+      ctx.arc(p.x + 3 * p.s - p.s / 1.5, p.y + p.s, p.s / 1.5, 1.5 * Math.PI, 2 * Math.PI);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      p.x += p.px;
+      p.y += p.py;
+      if (p.x > can.width) {
+        p.x = -3 * p.s;
+        p.py = -p.py;
+      }
+  };
+
+  function addCandlestick() {
+    var height = rand(can.height / 4, can.height / 2);
+    var y = rand(0, can.height - height);
+    var isGreen = Math.random() > 0.5;
+    candlesticks.push({
+      x: can.width,
+      y: y,
+      height: height,
+      isGreen: isGreen,
+      scored: false
+    });
+  }
+
+  function drawCandlestick(candlestick) {
+    ctx.fillStyle = candlestick.isGreen ? "green" : "red";
+    ctx.fillRect(candlestick.x, candlestick.y, candlestickWidth, candlestick.height);
+    
+    // Draw wick
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(candlestick.x + candlestickWidth / 2, candlestick.y - 10);
+    ctx.lineTo(candlestick.x + candlestickWidth / 2, candlestick.y + candlestick.height + 10);
+    ctx.stroke();
+  }
+
+  function drawBird() {
+    ctx.beginPath();
+    ctx.arc(bird.x, bird.y, bird.radius, 0, 2 * Math.PI);
+    ctx.fillStyle = "yellow";
+    ctx.fill();
+    ctx.strokeStyle = "black";
+    ctx.stroke();
+
+    // Draw eye
+    ctx.beginPath();
+    ctx.arc(bird.x + 10, bird.y - 5, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = "white";
+    ctx.fill();
+    ctx.fillStyle = "black";
+    ctx.beginPath();
+    ctx.arc(bird.x + 12, bird.y - 5, 2, 0, 2 * Math.PI);
+    ctx.fill();
+
+    // Draw beak
+    ctx.beginPath();
+    ctx.moveTo(bird.x + 15, bird.y + 5);
+    ctx.lineTo(bird.x + 30, bird.y);
+    ctx.lineTo(bird.x + 15, bird.y - 5);
+    ctx.fillStyle = "orange";
+    ctx.fill();
+  }
+
+  function updateBird() {
+    bird.velocity += bird.gravity;
+    bird.y += bird.velocity;
+
+    if (bird.y + bird.radius > can.height) {
+      bird.y = can.height - bird.radius;
+      bird.velocity = 0;
+    }
+
+    if (bird.y - bird.radius < 0) {
+      bird.y = bird.radius;
+      bird.velocity = 0;
+    }
+  }
+
+  function checkCollision() {
+    for (var i = 0; i < candlesticks.length; i++) {
+      var candlestick = candlesticks[i];
+      if (
+        bird.x + bird.radius > candlestick.x &&
+        bird.x - bird.radius < candlestick.x + candlestickWidth &&
+        (bird.y - bird.radius < candlestick.y + candlestick.height && bird.y + bird.radius > candlestick.y)
+      ) {
+        return true;
+      }
+      if (candlestick.x + candlestickWidth < bird.x - bird.radius && !candlestick.scored) {
+        bird.score++;
+        candlestick.scored = true;
+      }
+    }
+    return false;
+  }
+
+  function gameOver() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, can.width, can.height);
+    ctx.fillStyle = "white";
+    ctx.font = "48px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("Game Over", can.width / 2, can.height / 2);
+    ctx.font = "24px Arial";
+    ctx.fillText("Score: " + bird.score, can.width / 2, can.height / 2 + 40);
+    ctx.fillText("Click to restart", can.width / 2, can.height / 2 + 80);
+  }
+
+  var gameActive = true;
+
+  function update() {
+    ctx.clearRect(0, 0, can.width, can.height);
+
+    // Draw background
+    let c = ctx.createLinearGradient(0, 0, 0, can.height);
+    c.addColorStop(0, "rgb(" + [200 - time, 200 - time, 255 - time] + ")");
+    c.addColorStop(1, "rgb(" + [230 - time, 200 - time, 255 - time] + ")");
+    ctx.fillStyle = c;
+    ctx.fillRect(0, 0, can.width, can.height);
+
+    for (let i = 0; i < Math.floor(clouds.length / 2); i++)
+      drawCloud(clouds[i]);
+
+    for (let i in buildings) {
+      let p = buildings[i];
+      ctx.beginPath();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "black";
+      ctx.fillStyle = "rgb(" + [200 - time, 200 - time, 200 - time] + ")";
+      ctx.rect(p.x, p.y, p.w, can.height - p.y);
+      ctx.fill();
+      ctx.stroke();
+      for (let x = 10; x < p.w - 10; x += p.w / 7.5)
+        for (let y = 10; y < can.height - p.y; y += p.w / 7.5) {
+          ctx.beginPath();
+          ctx.fillStyle = p.asleep ? "rgb(100, 100, 0)" : "yellow";
+          ctx.rect(p.x + x, p.y + y, p.w / 10, p.w / 10);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+      // Move buildings and reset if off-screen
+      p.x -= candlestickSpeed / 2;
+      if (p.x + p.w < 0) {
+        p.x = can.width;
+        p.y = rand(can.height / 4, 3 * can.height / 4);
+      }
+    }
+
+    for (let i = Math.floor(clouds.length / 2); i < clouds.length; i++)
+      drawCloud(clouds[i]);
+
+    if (gameActive) {
+      updateBird();
+      
+      frameCount++;
+      if (frameCount % candlestickInterval === 0) {
+        addCandlestick();
+      }
+
+      for (var i = candlesticks.length - 1; i >= 0; i--) {
+        candlesticks[i].x -= candlestickSpeed;
+        drawCandlestick(candlesticks[i]);
+        if (candlesticks[i].x + candlestickWidth < 0) {
+          candlesticks.splice(i, 1);
+        }
+      }
+
+      drawBird();
+
+      if (checkCollision()) {
+        gameActive = false;
+      }
+
+      ctx.fillStyle = "black";
+      ctx.font = "24px Arial";
+      ctx.textAlign = "left";
+      ctx.fillText("Score: " + bird.score, 10, 30);
+
+      // Decrease the cooldown timer
+      if (spacebarCooldown > 0) {
+        spacebarCooldown--;
+      }
+
+    } else {
+      gameOver();
+    }
+
+    requestAnimationFrame(update);
+  }
+
+  update();
+
+  window.addEventListener("keydown", function(e) {
+    if (e.code === "Space" && spacebarCooldown === 0) {
+      if (gameActive) {
+        bird.velocity = bird.lift;
+        spacebarCooldown = 10; // Set cooldown period
+      } else {
+        // Restart game
+        bird.y = can.height / 2;
+        bird.velocity = 0;
+        bird.score = 0;
+        candlesticks = [];
+        gameActive = true;
+      }
+    }
+  });
+
+  can.addEventListener("click", function() {
+    if (gameActive) {
+      bird.velocity = bird.lift;
+    } else {
+      // Restart game
+      bird.y = can.height / 2;
+      bird.velocity = 0;
+      bird.score = 0;
+      candlesticks = [];
+      gameActive = true;
+    }
+  });
+
+  window.on("resize", function() {
+    can.width = this.innerWidth;
+    can.height = this.innerHeight;
+    buildings = [];
+    for (let i = 0; i < Math.floor(can.width / 300); i++)
+      buildings.push(new Building(i * 300));
+    buildings.sort(function(a, b) {
+      return a.y - b.y;
+    });
+    for (let i in clouds)
+      clouds[i] = new Cloud();
+    bird.x = can.width / 4;
+    bird.y = can.height / 2;
+  });
+
+}());
+    </script>
+</body>
+</html>
